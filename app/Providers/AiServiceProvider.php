@@ -25,8 +25,6 @@ class AiServiceProvider extends ServiceProvider implements DeferrableProvider
                 default => new XaiProvider(),
             };
         });
-
-        // Rejestracja fasady nie jest już potrzebna w aliases, używamy DI
     }
 
     /**

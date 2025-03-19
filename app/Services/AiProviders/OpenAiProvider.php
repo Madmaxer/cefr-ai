@@ -2,45 +2,42 @@
 
 namespace App\Services\AiProviders;
 
-use GuzzleHttp\Client;
-use App\Contracts\AiProvider;
-
-class OpenAiProvider implements AiProvider
+final class OpenAiProvider extends AbstractAiProvider
 {
-    protected $client;
-    protected $apiKey;
-
-    public function __construct()
-    {
-        $this->apiKey = config('ai.providers.openai.api_key');
-        $this->client = new Client(['base_uri' => config('ai.providers.openai.base_uri')]);
-    }
-
-    public function sendRequest(array $payload): array
-    {
-        $openAiPayload = [
-            'model' => 'gpt-4',
-            'messages' => [
-                ['role' => 'user', 'content' => json_encode($payload)],
-            ],
-        ];
-
-        $response = $this->client->post($this->getEndpoint(), [
-            'headers' => [
-                'Authorization' => "Bearer {$this->apiKey}",
-                'Content-Type' => 'application/json',
-            ],
-            'json' => $openAiPayload,
-        ]);
-
-        $data = json_decode($response->getBody(), true);
-
-        return json_decode($data['choices'][0]['message']['content'], true);
-    }
-
     public function getEndpoint(): string
     {
-        return 'chat/completions';
+        return config('ai.providers.openai.endpoint');
+    }
+
+    protected function getAiResponse(array $payload): array
+    {
+        // Format żądania dla OpenAI
+        $body = [
+            'model' => 'gpt-4',
+            'messages' => [
+                ['role' => 'system', 'content' => "You are a language test assistant for CEFR level evaluation in {$payload['language']}."],
+                ['role' => 'user', 'content' => $payload['message']],
+            ],
+            'max_tokens' => 100,
+        ];
+
+        $response = $this->makeHttpRequest($body);
+
+        // Normalizacja odpowiedzi OpenAI
+        $content = $response['choices'][0]['message']['content'] ?? '';
+        return $this->parseOpenAiResponse($content);
+    }
+
+    private function parseOpenAiResponse(string $content): array
+    {
+        // Przykładowa logika parsowania (dostosuj do rzeczywistych odpowiedzi)
+        if (str_contains($content, 'Thank you')) {
+            return [
+                'finished' => true,
+                'level' => 'A2',
+                'description' => 'Basic understanding, limited vocabulary.',
+            ];
+        }
+        return ['next_question' => $content];
     }
 }
-

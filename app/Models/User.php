@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
@@ -35,7 +36,7 @@ class User extends Authenticatable implements JWTSubject
         ];
     }
 
-    protected static function boot()
+    protected static function boot(): void
     {
         parent::boot();
 
@@ -46,7 +47,7 @@ class User extends Authenticatable implements JWTSubject
         });
     }
 
-    public function languageTests()
+    public function languageTests(): HasMany
     {
         return $this->hasMany(LanguageTest::class);
     }
@@ -56,7 +57,7 @@ class User extends Authenticatable implements JWTSubject
         return $this->getKey();
     }
 
-    public function getJWTCustomClaims()
+    public function getJWTCustomClaims(): array
     {
         return [];
     }
