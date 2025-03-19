@@ -1,59 +1,66 @@
 services:
-  app-ai:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: laravel-app
-    container_name: app-ai
-    restart: unless-stopped
-    working_dir: /var/www
-    volumes:
-      - ./:/var/www
-    networks:
-      - network-ai
+    app-ai:
+        build:
+            context: .
+            dockerfile: Dockerfile
+            args:
+                USER_ID: 1000  # Dostosuj do swojego UID
+                GROUP_ID: 1000 # Dostosuj do swojego GID
+        image: laravel-app
+        container_name: app-ai
+        restart: unless-stopped
+        working_dir: /var/www
+        volumes:
+            - ./:/var/www
+        networks:
+            - network-ai
+        command: >
+            sh -c "/var/www/node_modules/.bin/vite build || (echo 'Vite build failed, continuing anyway' && php-fpm) && php-fpm"
 
-  nginx-ai:
-    image: nginx:alpine
-    container_name: nginx-ai
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./:/var/www
-      - ./nginx:/etc/nginx/conf.d
-      - ./nginx/snippets:/etc/nginx/snippets
-      - ./certs:/etc/nginx/certs
-    networks:
-      - network-ai
+    nginx-ai:
+        image: nginx:alpine
+        container_name: nginx-ai
+        restart: unless-stopped
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./:/var/www
+            - ./nginx:/etc/nginx/conf.d
+            - ./nginx/snippets:/etc/nginx/snippets
+            - ./certs:/etc/nginx/certs
+        networks:
+            - network-ai
 
-  mysql-ai:
-    image: mysql:5.7
-    container_name: mysql-ai
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: laravel
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_PASSWORD: secret
-      MYSQL_USER: laravel
-    volumes:
-      - mysql-data:/var/lib/mysql
-    networks:
-      - network-ai
+    mysql-ai:
+        image: mysql:5.7
+        container_name: mysql-ai
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: cefr
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_PASSWORD: root
+            MYSQL_USER: cefr
+        volumes:
+            - mysql-data:/var/lib/mysql
+        ports:
+            - "3306:3306"
+        networks:
+            - network-ai
 
-  rabbitmq-ai:
-    image: rabbitmq:3-management
-    container_name: rabbitmq-ai
-    restart: unless-stopped
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    networks:
-      - network-ai
+    rabbitmq-ai:
+        image: rabbitmq:3-management
+        container_name: rabbitmq-ai
+        restart: unless-stopped
+        ports:
+            - "5672:5672"
+            - "15672:15672"
+        networks:
+            - network-ai
 
 volumes:
-  mysql-data:
+    mysql-data:
 
 networks:
-  network-ai:
-    driver: bridge
+    network-ai:
+        driver: bridge

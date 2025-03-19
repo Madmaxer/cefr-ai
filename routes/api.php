@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CefrController;
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -15,3 +17,6 @@ Route::prefix('v1')->group(function () {
         });
     });
 });
+
+Route::post('/language-test/{userId}', [CefrController::class, 'languageTest']);
+Route::post('/test-summary', [CefrController::class, 'storeSummary']);
