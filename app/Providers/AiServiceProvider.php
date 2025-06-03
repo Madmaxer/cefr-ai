@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\AiProviders\ClaudeProvider;
+use GuzzleHttp\Client;
 use Illuminate\Support\ServiceProvider;
 use App\Contracts\AiProvider;
 use App\Services\AiProviders\XaiProvider;
@@ -17,12 +19,15 @@ class AiServiceProvider extends ServiceProvider implements DeferrableProvider
     public function register()
     {
         $this->app->singleton(AiProvider::class, function ($app) {
-            $provider = config('ai.provider', 'xai');
+            $provider = config('ai.provider', 'claude');
+
+            $client = new Client(['timeout' => 10.0]);
 
             return match ($provider) {
-                'openai' => new OpenAiProvider(),
-                'google' => new GoogleProvider(),
-                default => new XaiProvider(),
+                'openai' => new OpenAiProvider($client),
+                'google' => new GoogleProvider($client),
+                'xai' => new XaiProvider($client),
+                default => new ClaudeProvider($client)
             };
         });
     }

@@ -1,205 +1,202 @@
 <!DOCTYPE html>
-<html>
+<html lang="{{ $language }}">
 <head>
-    <title>CEFR Test - {{ ucfirst($language) }}</title>
-    @vite(['resources/sass/app.scss', 'resources/js/app.js'])
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>CEFR Language Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .question, .result {
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button.recording {
+            background-color: #dc3545;
+        }
+        .result {
+            display: none;
+            padding: 15px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+        }
+    </style>
 </head>
 <body>
-<h1>Test Language: {{ ucfirst($language) }}</h1>
-<button id="startButton">Start</button>
-<button id="stopButton">Stop</button>
-<div id="output"></div>
-<div id="botBubble" class="bot-bubble">Bot</div>
+<h1>CEFR Language Test ({{ strtoupper($language) }})</h1>
 
-<script type="module">
-    const startButton = document.getElementById('startButton');
-    const stopButton = document.getElementById('stopButton');
-    const output = document.getElementById('output');
-    const botBubble = document.getElementById('botBubble');
-    const language = "{{ $speechApiCode }}";
-    const testLanguage = "{{ $language }}";
+<div id="test-container">
+    <div class="question">
+        <p id="current-question">Please wait, starting the test...</p>
+        <button id="start-test">Start Test</button>
+        <button id="record-response" disabled>🎤 Speak</button>
+    </div>
+</div>
+
+<div id="result-container" class="result">
+    <h2>Your CEFR Level</h2>
+    <p><strong>Level:</strong> <span id="cefr-level"></span></p>
+    <p><strong>Description:</strong> <span id="cefr-description"></span></p>
+</div>
+
+<script>
+    const userId = '{{ auth()->user() ? auth()->user()->id : "test-user" }}';
+    const language = '{{ $language }}';
+    const speechApiCode = '{{ $speechApiCode }}'; // np. "en-US"
+    const apiEndpoint = `/api/language-test/${userId}`;
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+    const questionElement = document.getElementById('current-question');
+    const startButton = document.getElementById('start-test');
+    const recordButton = document.getElementById('record-response');
+    const resultContainer = document.getElementById('result-container');
+    const cefrLevelElement = document.getElementById('cefr-level');
+    const cefrDescriptionElement = document.getElementById('cefr-description');
+
+    // Inicjalizacja SpeechSynthesis (Text-to-Speech)
+    const synth = window.speechSynthesis;
+    let voices = [];
+
+    function loadVoices() {
+        voices = synth.getVoices();
+        // Wybierz głos pasujący do języka
+        const voice = voices.find(v => v.lang === speechApiCode) || voices.find(v => v.lang.startsWith(language));
+        return voice || voices[0]; // Domyślny głos, jeśli brak pasującego
+    }
+
+    function speak(text) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        const voice = loadVoices();
+        utterance.voice = voice;
+        utterance.lang = speechApiCode;
+        synth.speak(utterance);
+        return utterance;
+    }
+
+    // Inicjalizacja SpeechRecognition (Speech-to-Text)
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
-    let isSpeaking = false;
-    let isRecognizing = false;
-    let lastBotQuestion = '';
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.lang = speechApiCode;
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
 
-    if (!startButton || !stopButton || !output || !botBubble) {
-        console.error('One or more elements not found.');
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            handleResponse(transcript);
+            recordButton.textContent = '🎤 Speak';
+            recordButton.classList.remove('recording');
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            alert('Microphone error: ' + event.error);
+            recordButton.textContent = '🎤 Speak';
+            recordButton.classList.remove('recording');
+            startButton.disabled = false;
+        };
+
+        recognition.onend = () => {
+            recordButton.textContent = '🎤 Speak';
+            recordButton.classList.remove('recording');
+        };
     } else {
-        if ('webkitSpeechRecognition' in window) {
-            recognition = new webkitSpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = false;
-            recognition.lang = language;
-            recognition.maxAlternatives = 1;
-
-            recognition.onresult = (event) => {
-                if (isSpeaking) return; // Ignoruj wyniki, jeśli bot mówi
-
-                const transcript = event.results[event.results.length - 1][0].transcript.trim();
-                if (transcript.length < 3 || transcript === lastBotQuestion) return;
-
-                output.textContent = `You said: "${transcript}"`;
-                console.log('Recognized:', transcript);
-
-                fetch(`/api/language-test/{{ auth()->user()->id }}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        response: transcript,
-                        language: testLanguage
-                    })
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.next_question) {
-                            lastBotQuestion = data.next_question;
-                            speak(data.next_question);
-                        } else if (data.finished) {
-                            output.textContent = `Test finished. Level: ${data.level} - ${data.description}`;
-                        }
-                    })
-                    .catch(error => console.error('Fetch error:', error));
-            };
-
-            recognition.onstart = () => {
-                isRecognizing = true;
-                output.textContent = 'Listening... Please speak now.';
-                console.log('Recognition started');
-            };
-
-            recognition.onend = () => {
-                isRecognizing = false;
-                if (!isSpeaking) {
-                    setTimeout(() => {
-                        if (!isRecognizing && !isSpeaking) {
-                            console.log('Restarting recognition...');
-                            recognition.start();
-                        }
-                    }, 500);
-                }
-            };
-
-            recognition.onerror = (event) => {
-                console.error('Speech recognition error:', event.error);
-                isRecognizing = false;
-                if (event.error === 'no-speech') {
-                    output.textContent = 'No speech detected, please try again.';
-                    setTimeout(() => {
-                        if (!isRecognizing && !isSpeaking) recognition.start();
-                    }, 1000);
-                } else if (event.error === 'audio-capture') {
-                    output.textContent = 'Microphone error: Please check your audio input.';
-                } else {
-                    output.textContent = `Error: ${event.error}`;
-                }
-            };
-        } else {
-            console.error('Speech recognition not supported.');
-            output.textContent = 'Speech recognition is not supported in your browser.';
-        }
-
-        function speak(text) {
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = language;
-
-            isSpeaking = true;
-            if (isRecognizing) {
-                recognition.stop(); // Zatrzymaj nasłuchiwanie, gdy bot zaczyna mówić
-                console.log('Recognition stopped for bot speech');
-            }
-
-            utterance.onstart = () => {
-                botBubble.classList.add('speaking');
-                botBubble.textContent = text;
-                botBubble.style.opacity = '1';
-                output.textContent = `Bot: ${text}`;
-            };
-
-            utterance.onend = () => {
-                isSpeaking = false;
-                botBubble.classList.remove('speaking');
-                botBubble.textContent = 'Bot';
-                botBubble.style.opacity = '0.5';
-                setTimeout(() => {
-                    if (!isRecognizing && !isSpeaking) {
-                        console.log('Resuming recognition after bot speech');
-                        recognition.start();
-                    }
-                }, 500);
-            };
-
-            window.speechSynthesis.speak(utterance);
-        }
-
-        startButton.addEventListener('click', () => {
-            if (recognition && !isSpeaking && !isRecognizing) {
-                console.log('Starting recognition...');
-                recognition.start();
-                // Wywołaj pierwsze pytanie po starcie
-                fetch(`/api/language-test/{{ auth()->user()->id }}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        response: '',
-                        language: testLanguage
-                    })
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.next_question) {
-                            lastBotQuestion = data.next_question;
-                            speak(data.next_question);
-                        }
-                    });
-            }
-        });
-
-        stopButton.addEventListener('click', () => {
-            if (recognition && isRecognizing) {
-                recognition.stop();
-            }
-        });
+        alert('Speech recognition not supported in this browser.');
+        recordButton.disabled = true;
+        startButton.disabled = true;
     }
+
+    // Funkcja wysyłająca odpowiedź do API
+    async function sendResponse(response) {
+        try {
+            const res = await fetch(apiEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+                body: JSON.stringify({
+                    response: response,
+                    language: language,
+                }),
+            });
+
+            if (!res.ok) throw new Error('API request failed');
+            return await res.json();
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Something went wrong. Please try again.');
+        }
+    }
+
+    // Obsługa odpowiedzi użytkownika
+    async function handleResponse(response) {
+        const data = await sendResponse(response);
+        if (data) {
+            if (data.finished) {
+                resultContainer.style.display = 'block';
+                cefrLevelElement.textContent = data.level;
+                cefrDescriptionElement.textContent = data.description;
+                document.getElementById('test-container').style.display = 'none';
+                speak(`Your CEFR level is ${data.level}. Here’s the description: ${data.description}`);
+            } else if (data.next_question) {
+                const cleanQuestion = data.next_question.replace(/^\[(Question|More Details)\]\s*/, '');
+                questionElement.textContent = cleanQuestion;
+                const utterance = speak(cleanQuestion);
+                utterance.onend = () => {
+                    recordButton.disabled = false;
+                };
+            }
+        }
+    }
+
+    // Start testu
+    startButton.addEventListener('click', async () => {
+        startButton.disabled = true;
+        recordButton.disabled = true;
+
+        const welcomeMessage = "Welcome to the CEFR Language Test. I will ask you questions to assess your language level. Please speak clearly when answering.";
+        questionElement.textContent = welcomeMessage;
+        const welcomeUtterance = speak(welcomeMessage);
+
+        welcomeUtterance.onend = async () => {
+            const data = await sendResponse('');
+            if (data && data.next_question) {
+                const cleanQuestion = data.next_question.replace(/^\[(Question|More Details)\]\s*/, '');
+                questionElement.textContent = cleanQuestion;
+                const questionUtterance = speak(cleanQuestion);
+                questionUtterance.onend = () => {
+                    recordButton.disabled = false;
+                };
+            }
+        };
+    });
+
+    // Obsługa nagrywania
+    recordButton.addEventListener('click', () => {
+        if (!recognition || recordButton.classList.contains('recording')) return;
+
+        recognition.start();
+        recordButton.textContent = '🎤 Stop';
+        recordButton.classList.add('recording');
+    });
 </script>
-
-<style>
-    .bot-bubble {
-        width: 60px;
-        height: 60px;
-        background-color: #4CAF50;
-        border-radius: 50%;
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 16px;
-        text-align: center;
-        padding: 10px;
-        transition: transform 0.2s ease-in-out;
-        visibility: visible;
-        opacity: 0.5;
-    }
-
-    .bot-bubble.speaking {
-        opacity: 1;
-        animation: pulse 1s infinite;
-    }
-
-    @keyframes pulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.1); }
-        100% { transform: scale(1); }
-    }
-</style>
 </body>
 </html>

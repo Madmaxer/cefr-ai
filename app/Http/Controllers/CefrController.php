@@ -2,14 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Facades\AiProviderFacade;
-use App\Models\LanguageTest;
+use App\Contracts\AiProvider;
 use App\Enums\Language;
+use App\Models\LanguageTest;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class CefrController extends Controller
 {
-    public function showTest($language)
+    public function __construct(private readonly AiProvider $provider)
+    {
+    }
+
+    public function showTest(string $language): \Illuminate\View\View
     {
         $languageInput = strtolower($language);
         $validLanguage = in_array($languageInput, Language::values())
@@ -22,7 +27,7 @@ class CefrController extends Controller
         ]);
     }
 
-    public function languageTest(Request $request, $userId)
+    public function languageTest(Request $request, string $userId): JsonResponse
     {
         $userResponse = $request->input('response');
         $languageInput = strtolower($request->input('language', Language::ENGLISH->value));
@@ -34,40 +39,29 @@ class CefrController extends Controller
         $payload = [
             'user_id' => $userId,
             'message' => $userResponse,
-            'context' => 'cefr_level_test',
             'language' => $language->value,
         ];
 
-        $botResponse = AiProviderFacade::sendRequest($payload);
+        $botResponse = $this->provider->sendRequest($payload);
 
-        if ($botResponse['finished']) {
-            $this->storeSummary(new Request([
+        if ($botResponse['finished'] ?? false) {
+            $validated = $request->validate([
+                'user_id' => 'required|uuid|exists:users,id',
+                'language' => 'required|string|in:' . implode(',', Language::values()),
+                'level' => 'required|string',
+                'description' => 'required|string',
+                'tested_at' => 'required|date',
+            ], [
                 'user_id' => $userId,
                 'language' => $language->value,
                 'level' => $botResponse['level'],
                 'description' => $botResponse['description'],
                 'tested_at' => now()->toDateTimeString(),
-            ]));
+            ]);
+
+            LanguageTest::create($validated);
         }
 
         return response()->json($botResponse);
-    }
-
-    public function storeSummary(Request $request)
-    {
-        $validated = $request->validate([
-            'user_id' => 'required|uuid|exists:users,id',
-            'language' => 'required|string|in:' . implode(',', Language::values()),
-            'level' => 'required|string',
-            'description' => 'required|string',
-            'tested_at' => 'required|date',
-        ]);
-
-        $test = LanguageTest::create($validated);
-
-        return response()->json([
-            'message' => 'Summary stored successfully',
-            'test_id' => $test->id,
-        ], 201);
     }
 }

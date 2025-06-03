@@ -2,11 +2,16 @@
 
 namespace App\Services\AiProviders;
 
-use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Log;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
 
 class XaiProvider extends AbstractAiProvider
 {
+    public function __construct(Client $httpClient)
+    {
+        parent::__construct($httpClient, 'xai');
+    }
+
     public function getEndpoint(): string
     {
         return config('ai.providers.xai.base_uri');
@@ -89,5 +94,27 @@ class XaiProvider extends AbstractAiProvider
             ],
             'model' => 'grok-3',
         ];
+    }
+
+    protected function makeHttpRequest(array $body): array
+    {
+        $config = config('ai.providers.xai');
+        $apiKey = $config['api_key'] ?? '';
+
+        try {
+            $response = $this->httpClient->post($this->getEndpoint(), [
+                'headers' => [
+                    'Authentication' => 'Bearer ' . $apiKey,
+                    'anthropic-version' => $config['version'],
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => $body,
+            ]);
+
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (RequestException $e) {
+            \Log::error("Xai API error: " . $e->getMessage());
+            return $this->mockAiResponse($body);
+        }
     }
 }

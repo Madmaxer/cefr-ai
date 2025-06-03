@@ -2,6 +2,8 @@
 
 namespace App\Services\AiProviders;
 
+use GuzzleHttp\Exception\RequestException;
+
 final class OpenAiProvider extends AbstractAiProvider
 {
     public function getEndpoint(): string
@@ -39,5 +41,27 @@ final class OpenAiProvider extends AbstractAiProvider
             ];
         }
         return ['next_question' => $content];
+    }
+
+    protected function makeHttpRequest(array $body): array
+    {
+        $config = config('ai.providers.openai');
+        $apiKey = $config['api_key'] ?? '';
+
+        try {
+            $response = $this->httpClient->post($this->getEndpoint(), [
+                'headers' => [
+                    'Authentication' => 'Bearer ' . $apiKey,
+                    'anthropic-version' => $config['version'],
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => $body,
+            ]);
+
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (RequestException $e) {
+            \Log::error("Open AI API error: " . $e->getMessage());
+            return $this->mockAiResponse($body);
+        }
     }
 }
