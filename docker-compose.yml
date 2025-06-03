@@ -71,7 +71,7 @@ services:
         working_dir: /var/www/html
         volumes:
             - .:/var/www/html
-        command: sh -c "npm run clean && vite build"
+        command: sh -c "npm ci && npm run clean && npm run build"
         depends_on:
             - php
 
