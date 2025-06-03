@@ -1,59 +1,81 @@
 services:
-  app-ai:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: laravel-app
-    container_name: app-ai
-    restart: unless-stopped
-    working_dir: /var/www
-    volumes:
-      - ./:/var/www
-    networks:
-      - network-ai
+    php:
+        container_name: app-ai
+        build:
+            context: .
+            dockerfile: Dockerfile
+        volumes:
+            - .:/var/www/html
+        depends_on:
+            - mysql
+            - redis
+            - rabbitmq
 
-  nginx-ai:
-    image: nginx:alpine
-    container_name: nginx-ai
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./:/var/www
-      - ./nginx:/etc/nginx/conf.d
-      - ./nginx/snippets:/etc/nginx/snippets
-      - ./certs:/etc/nginx/certs
-    networks:
-      - network-ai
+    nginx:
+        container_name: nginx-ai
+        image: nginx:alpine
+        restart: unless-stopped
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./:/var/www
+            - ./nginx:/etc/nginx/conf.d
+            - ./nginx/snippets:/etc/nginx/snippets
+            - ./certs:/etc/nginx/certs
 
-  mysql-ai:
-    image: mysql:5.7
-    container_name: mysql-ai
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: laravel
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_PASSWORD: secret
-      MYSQL_USER: laravel
-    volumes:
-      - mysql-data:/var/lib/mysql
-    networks:
-      - network-ai
+    mysql:
+        container_name: mysql-ai
+        image: mysql:8.0
+        environment:
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_DATABASE: laravel
+            MYSQL_USER: laravel
+            MYSQL_PASSWORD: secret
+        volumes:
+            - mysql-data:/var/lib/mysql
 
-  rabbitmq-ai:
-    image: rabbitmq:3-management
-    container_name: rabbitmq-ai
-    restart: unless-stopped
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    networks:
-      - network-ai
+    redis:
+        container_name: redis-ai
+        image: redis:7.2
+        ports:
+            - "6379:6379"
+        volumes:
+            - redis-data:/data
+
+    rabbitmq:
+        container_name: rabbitmq-ai
+        image: rabbitmq:3-management
+        ports:
+            - "5672:5672"
+            - "15672:15672"
+        volumes:
+            - rabbitmq-data:/var/lib/rabbitmq
+
+    horizon:
+        container_name: horizon-ai
+        build:
+            context: .
+            dockerfile: Dockerfile
+        volumes:
+            - .:/var/www/html
+        command: php artisan horizon
+        depends_on:
+            - php
+            - redis
+            - rabbitmq
+
+    node:
+        container_name: node-ai
+        image: node:20
+        working_dir: /var/www/html
+        volumes:
+            - .:/var/www/html
+        command: sh -c "npm run clean && vite build"
+        depends_on:
+            - php
 
 volumes:
-  mysql-data:
-
-networks:
-  network-ai:
-    driver: bridge
+    mysql-data:
+    redis-data:
+    rabbitmq-data:
